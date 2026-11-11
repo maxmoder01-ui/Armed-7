@@ -1,0 +1,7 @@
+{
+  "id": "sample.hello",
+  "name": "Sample Hello Module",
+  "version": "1.0.0",
+  "apiVersion": 1,
+  "description": "Example metadata-only Armed 7 module."
+}
