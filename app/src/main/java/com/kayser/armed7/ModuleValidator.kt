@@ -56,14 +56,32 @@ class ModuleValidator {
             warnings.add("Versão do jogo não identificada.")
         } else {
             manifest.minGameVersion?.let { minimum ->
-                if (compareVersions(gameVersion, minimum) < 0) {
-                    errors.add("O jogo está abaixo da versão mínima.")
+                val comparison = GameCompatibility.compareVersions(
+                    gameVersion,
+                    minimum
+                )
+
+                when {
+                    comparison == null ->
+                        warnings.add("Não foi possível verificar a versão mínima.")
+
+                    comparison < 0 ->
+                        errors.add("O jogo está abaixo da versão mínima.")
                 }
             }
 
             manifest.maxGameVersion?.let { maximum ->
-                if (compareVersions(gameVersion, maximum) > 0) {
-                    errors.add("O jogo ultrapassa a versão máxima.")
+                val comparison = GameCompatibility.compareVersions(
+                    gameVersion,
+                    maximum
+                )
+
+                when {
+                    comparison == null ->
+                        warnings.add("Não foi possível verificar a versão máxima.")
+
+                    comparison > 0 ->
+                        errors.add("O jogo ultrapassa a versão máxima.")
                 }
             }
         }
@@ -103,26 +121,5 @@ class ModuleValidator {
             errors = errors,
             warnings = warnings
         )
-    }
-
-    private fun compareVersions(
-        first: String,
-        second: String
-    ): Int {
-        val a = first.split(".").map { it.toInt() }
-        val b = second.split(".").map { it.toInt() }
-
-        val size = maxOf(a.size, b.size)
-
-        for (index in 0 until size) {
-            val left = a.getOrElse(index) { 0 }
-            val right = b.getOrElse(index) { 0 }
-
-            if (left != right) {
-                return left.compareTo(right)
-            }
-        }
-
-        return 0
     }
 }
