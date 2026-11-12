@@ -1,184 +1,129 @@
+
 package com.kayser.armed7
 
+import android.content.Context
+import android.content.pm.PackageInfo
+import android.content.pm.PackageManager
+import android.os.Build
+import java.util.zip.ZipFile
+
 /**
- * Verifica se um módulo declara compatibilidade com o ambiente
- * detectado do Among Us e com a API do Armed 7.
+ * Detecta informações públicas da instalação do Among Us.
  *
- * Este componente apenas valida metadados.
- * Ele não modifica nem executa código dentro do jogo.
+ * Inspeciona os APKs apenas para leitura.
+ * Não altera arquivos nem interage com o processo do jogo.
  */
+class GameDetector(context: Context) {
 
-enum class CompatibilityStatus {
-    COMPATIBLE,
-    INCOMPATIBLE,
-    UNKNOWN
-}
+    private val packageManager = context.packageManager
 
-data class GameEnvironment(
-    val packageName: String? = null,
-    val versionName: String? = null,
-    val versionCode: Long? = null,
-    val gameAbis: List<String>? = null,
-    val isInstalled: Boolean = false
-)
+    fun detect(
+        packageName: String = GameCompatibility.DEFAULT_GAME_PACKAGE
+    ): GameEnvironment {
+        return try {
+            val packageInfo = getPackageInfo(packageName)
 
-data class ModuleCompatibilitySpec(
-    val targetPackage: String = "com.innersloth.spacemafia",
-    val minGameVersion: String? = null,
-    val maxGameVersion: String? = null,
-    val supportedAbis: List<String>? = null,
-    val requiredApiVersion: Int = 1
-)
-
-data class CompatibilityResult(
-    val status: CompatibilityStatus,
-    val reasons: List<String>,
-    val warnings: List<String>
-)
-
-object GameCompatibility {
-
-    const val DEFAULT_GAME_PACKAGE =
-        "com.innersloth.spacemafia"
-
-    fun evaluate(
-        game: GameEnvironment,
-        module: ModuleCompatibilitySpec,
-        armed7ApiVersion: Int = 1
-    ): CompatibilityResult {
-
-        val reasons = mutableListOf<String>()
-        val warnings = mutableListOf<String>()
-
-        if (!game.isInstalled) {
-            return CompatibilityResult(
-                CompatibilityStatus.UNKNOWN,
-                listOf("Among Us não foi detectado."),
-                emptyList()
+            GameEnvironment(
+                packageName = packageInfo.packageName,
+                versionName = packageInfo.versionName,
+                versionCode = getVersionCode(packageInfo),
+                gameAbis = inspectGameAbis(packageInfo),
+                isInstalled = true
+            )
+        } catch (exception: PackageManager.NameNotFoundException) {
+            GameEnvironment(
+                packageName = null,
+                versionName = null,
+                versionCode = null,
+                gameAbis = null,
+                isInstalled = false
             )
         }
+    }
 
-        if (game.packageName == null) {
-            warnings.add("Não foi possível identificar o pacote do jogo.")
-        } else if (game.packageName != module.targetPackage) {
-            reasons.add("O módulo foi criado para outro pacote.")
+    private fun inspectGameAbis(
+        packageInfo: PackageInfo
+    ): List<String>? {
+        val applicationInfo = packageInfo.applicationInfo
+            ?: return null
+
+        val apkPaths = mutableListOf<String>()
+
+        applicationInfo.sourceDir?.let {
+            apkPaths.add(it)
         }
 
-        if (module.requiredApiVersion > armed7ApiVersion) {
-            reasons.add(
-                "O módulo exige uma API mais recente do Armed 7."
-            )
-        }
-
-        if (game.versionName == null) {
-            warnings.add("Versão do Among Us não identificada.")
-        } else {
-            module.minGameVersion?.let { minimum ->
-                val comparison = compareVersions(
-                    game.versionName,
-                    minimum
-                )
-
-                if (comparison == null) {
-                    warnings.add(
-                        "Não foi possível comparar a versão mínima."
-                    )
-                } else if (comparison < 0) {
-                    reasons.add(
-                        "A versão do jogo é inferior à exigida pelo módulo."
-                    )
-                }
-            }
-
-            module.maxGameVersion?.let { maximum ->
-                val comparison = compareVersions(
-                    game.versionName,
-                    maximum
-                )
-
-                if (comparison == null) {
-                    warnings.add(
-                        "Não foi possível comparar a versão máxima."
-                    )
-                } else if (comparison > 0) {
-                    reasons.add(
-                        "A versão do jogo é superior à suportada pelo módulo."
-                    )
-                }
+        if (Build.VERSION.SDK_INT >= 21) {
+            applicationInfo.splitSourceDirs?.let {
+                apkPaths.addAll(it)
             }
         }
 
-        val requiredAbis = module.supportedAbis
-        val detectedAbis = game.gameAbis
+        if (apkPaths.isEmpty()) return null
 
-        if (requiredAbis != null) {
-            if (detectedAbis == null || detectedAbis.isEmpty()) {
-                warnings.add(
-                    "Arquitetura do jogo ainda não foi identificada."
-                )
-            } else if (
-                requiredAbis.none { required ->
-                    detectedAbis.any { detected ->
-                        required.equals(detected, ignoreCase = true)
+        val detectedAbis = linkedSetOf<String>()
+
+        return try {
+            for (apkPath in apkPaths) {
+                ZipFile(apkPath).use { zip ->
+                    val entries = zip.entries()
+
+                    while (entries.hasMoreElements()) {
+                        val entry = entries.nextElement()
+
+                        if (entry.isDirectory) continue
+
+                        val parts = entry.name.split("/")
+
+                        if (parts.size >= 3 && parts[0] == "lib") {
+                            val abi = parts[1]
+
+                            if (abi in SUPPORTED_ABIS) {
+                                detectedAbis.add(abi)
+                            }
+                        }
                     }
                 }
-            ) {
-                reasons.add(
-                    "A arquitetura do jogo não é suportada pelo módulo."
-                )
             }
+
+            detectedAbis.takeIf { it.isNotEmpty() }?.toList()
+        } catch (exception: Exception) {
+            // Falha na leitura significa arquitetura desconhecida.
+            null
         }
+    }
 
-        val status = when {
-            reasons.isNotEmpty() ->
-                CompatibilityStatus.INCOMPATIBLE
-
-            warnings.isNotEmpty() ->
-                CompatibilityStatus.UNKNOWN
-
-            else ->
-                CompatibilityStatus.COMPATIBLE
+    private fun getPackageInfo(
+        packageName: String
+    ): PackageInfo {
+        return if (Build.VERSION.SDK_INT >= 33) {
+            packageManager.getPackageInfo(
+                packageName,
+                PackageManager.PackageInfoFlags.of(0)
+            )
+        } else {
+            @Suppress("DEPRECATION")
+            packageManager.getPackageInfo(packageName, 0)
         }
+    }
 
-        return CompatibilityResult(
-            status = status,
-            reasons = reasons,
-            warnings = warnings
+    private fun getVersionCode(
+        packageInfo: PackageInfo
+    ): Long {
+        return if (Build.VERSION.SDK_INT >= 28) {
+            packageInfo.longVersionCode
+        } else {
+            @Suppress("DEPRECATION")
+            packageInfo.versionCode.toLong()
+        }
+    }
+
+    companion object {
+        private val SUPPORTED_ABIS = setOf(
+            "armeabi-v7a",
+            "arm64-v8a",
+            "x86",
+            "x86_64"
         )
-    }
-
-    private fun compareVersions(
-        first: String,
-        second: String
-    ): Int? {
-        val firstParts = parseVersion(first) ?: return null
-        val secondParts = parseVersion(second) ?: return null
-
-        val size = maxOf(firstParts.size, secondParts.size)
-
-        for (index in 0 until size) {
-            val a = firstParts.getOrElse(index) { 0 }
-            val b = secondParts.getOrElse(index) { 0 }
-
-            if (a != b) {
-                return a.compareTo(b)
-            }
-        }
-
-        return 0
-    }
-
-    private fun parseVersion(version: String): List<Int>? {
-        val cleanVersion = version.trim()
-
-        if (cleanVersion.isEmpty()) return null
-
-        val parts = cleanVersion.split(".")
-
-        if (parts.any { part -> part.toIntOrNull() == null }) {
-            return null
-        }
-
-        return parts.map { it.toInt() }
     }
 }
