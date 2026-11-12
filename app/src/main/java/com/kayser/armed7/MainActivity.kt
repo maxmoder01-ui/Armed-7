@@ -1,4 +1,3 @@
-
 package com.kayser.armed7
 
 import android.app.Activity
@@ -21,7 +20,9 @@ import java.io.File
 class MainActivity : Activity() {
 
     private lateinit var manager: ModuleManager
+    private lateinit var detector: GameDetector
     private lateinit var statusText: TextView
+    private lateinit var gameStatusText: TextView
     private lateinit var moduleList: LinearLayout
 
     companion object {
@@ -35,6 +36,7 @@ class MainActivity : Activity() {
         window.navigationBarColor = Color.rgb(16, 21, 31)
 
         manager = ModuleManager(this)
+        detector = GameDetector(this)
 
         val root = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
@@ -58,10 +60,31 @@ class MainActivity : Activity() {
         })
 
         statusText = text("", 17f, Color.WHITE, true).apply {
-            setPadding(dp(10), dp(18), dp(10), dp(22))
+            setPadding(dp(10), dp(18), dp(10), dp(12))
         }
 
         root.addView(statusText)
+
+        root.addView(text(
+            "DETECÇÃO DO JOGO",
+            14f,
+            Color.rgb(150, 180, 220),
+            true
+        ).apply {
+            gravity = Gravity.START
+            setPadding(0, dp(18), 0, dp(8))
+        })
+
+        gameStatusText = text("", 14f, Color.LTGRAY).apply {
+            setPadding(dp(12), dp(14), dp(12), dp(14))
+            setBackgroundColor(Color.rgb(29, 38, 53))
+        }
+
+        root.addView(gameStatusText)
+
+        root.addView(makeButton("Verificar Among Us") {
+            refreshGameStatus()
+        })
 
         root.addView(makeButton("Importar módulo") {
             openModulePicker()
@@ -101,13 +124,39 @@ class MainActivity : Activity() {
         root.addView(text(
             "O Armed 7 organiza módulos Android. " +
             "Os pacotes são armazenados como dados. " +
-            "O aplicativo ainda não modifica o Among Us.",
+            "A detecção do jogo ainda não significa " +
+            "que os módulos possam ser executados nele.",
             13f,
             Color.LTGRAY
         ))
 
         setContentView(scroll)
+
         refreshModules()
+        refreshGameStatus()
+    }
+
+    private fun refreshGameStatus() {
+        val game = detector.detect()
+
+        gameStatusText.text = if (game.isInstalled) {
+            "Among Us detectado!\n\n" +
+            "Pacote: ${game.packageName}\n" +
+            "Versão: ${game.versionName ?: "Desconhecida"}\n" +
+            "Código: ${game.versionCode ?: "Desconhecido"}\n\n" +
+            "Arquitetura interna: ainda não verificada."
+        } else {
+            "Among Us não foi encontrado.\n\n" +
+            "Verifique se o jogo está instalado."
+        }
+
+        gameStatusText.setTextColor(
+            if (game.isInstalled) {
+                Color.rgb(130, 220, 150)
+            } else {
+                Color.LTGRAY
+            }
+        )
     }
 
     private fun openModulePicker() {
