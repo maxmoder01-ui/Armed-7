@@ -74,8 +74,11 @@ class ModuleManager(context: Context) {
                 "Manifesto inválido."
             }
 
-            if (entry.size > MAX_MANIFEST_BYTES) {
-                error("Manifesto excede 64 KB.")
+            require(
+                entry.size < 0 ||
+                entry.size <= MAX_MANIFEST_BYTES
+            ) {
+                "Manifesto excede 64 KB."
             }
 
             val content = zip.getInputStream(entry).use {
@@ -150,6 +153,8 @@ class ModuleManager(context: Context) {
         var entryCount = 0
 
         val extractedPaths = mutableSetOf<String>()
+        val destinationPath = destination.canonicalPath +
+            File.separator
 
         ZipFile(packageFile).use { zip ->
             val entries = zip.entries()
@@ -162,7 +167,10 @@ class ModuleManager(context: Context) {
                     "O pacote possui arquivos demais."
                 }
 
-                val normalized = validateEntryName(entry.name)
+                val normalized = validateEntryName(
+                    entry.name,
+                    entry.isDirectory
+                )
 
                 require(extractedPaths.add(normalized)) {
                     "O pacote possui caminhos duplicados."
@@ -186,8 +194,7 @@ class ModuleManager(context: Context) {
                 val output = File(destination, normalized)
 
                 require(
-                    output.canonicalFile.toPath()
-                        .startsWith(destination.canonicalFile.toPath())
+                    output.canonicalPath.startsWith(destinationPath)
                 ) {
                     "Caminho de extração inseguro."
                 }
@@ -200,8 +207,11 @@ class ModuleManager(context: Context) {
                     continue
                 }
 
-                if (entry.size > MAX_PACKAGE_BYTES) {
-                    error("Arquivo interno muito grande.")
+                require(
+                    entry.size < 0 ||
+                    entry.size <= MAX_PACKAGE_BYTES
+                ) {
+                    "Arquivo interno muito grande."
                 }
 
                 output.parentFile?.let {
@@ -236,7 +246,10 @@ class ModuleManager(context: Context) {
         }
     }
 
-    private fun validateEntryName(name: String): String {
+    private fun validateEntryName(
+        name: String,
+        isDirectory: Boolean
+    ): String {
         require(name.isNotBlank()) {
             "Nome de arquivo vazio."
         }
@@ -251,7 +264,13 @@ class ModuleManager(context: Context) {
             "Caminho de arquivo inválido."
         }
 
-        val parts = name.split("/")
+        val normalized = if (isDirectory) {
+            name.removeSuffix("/")
+        } else {
+            name
+        }
+
+        val parts = normalized.split("/")
 
         require(parts.none {
             it.isBlank() || it == "." || it == ".."
@@ -259,7 +278,7 @@ class ModuleManager(context: Context) {
             "O pacote contém um caminho inseguro."
         }
 
-        return name
+        return normalized
     }
 
     private fun isAllowedFile(path: String): Boolean {
