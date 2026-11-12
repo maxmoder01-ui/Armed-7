@@ -15,7 +15,6 @@ import android.widget.LinearLayout
 import android.widget.ScrollView
 import android.widget.TextView
 import android.widget.Toast
-import androidx.activity.result.contract.ActivityResultContracts
 import java.io.File
 
 class MainActivity : Activity() {
@@ -24,12 +23,9 @@ class MainActivity : Activity() {
     private lateinit var statusText: TextView
     private lateinit var moduleList: LinearLayout
 
-    private val filePicker =
-        registerForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
-            if (uri != null) {
-                importModule(uri)
-            }
-        }
+    companion object {
+        private const val PICK_MODULE_REQUEST = 1001
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -50,14 +46,7 @@ class MainActivity : Activity() {
             isFillViewport = true
         }
 
-        val title = text(
-            "ARMED 7",
-            32f,
-            Color.WHITE,
-            true
-        )
-
-        root.addView(title)
+        root.addView(text("ARMED 7", 32f, Color.WHITE, true))
 
         root.addView(text(
             "Central de módulos • Alpha 0.2",
@@ -67,19 +56,14 @@ class MainActivity : Activity() {
             setPadding(0, dp(6), 0, dp(28))
         })
 
-        statusText = text(
-            "",
-            17f,
-            Color.WHITE,
-            true
-        ).apply {
+        statusText = text("", 17f, Color.WHITE, true).apply {
             setPadding(dp(10), dp(18), dp(10), dp(22))
         }
 
         root.addView(statusText)
 
         root.addView(makeButton("Importar módulo") {
-            filePicker.launch(arrayOf("*/*"))
+            openModulePicker()
         })
 
         root.addView(makeButton("Atualizar lista") {
@@ -114,15 +98,41 @@ class MainActivity : Activity() {
         })
 
         root.addView(text(
-            "O Armed 7 é uma estrutura para organizar módulos Android. " +
-            "Nesta versão, os pacotes são armazenados como dados. " +
-            "O aplicativo ainda não modifica o Among Us.",
+            "O Armed 7 organiza módulos Android. Nesta versão, " +
+            "os pacotes são armazenados como dados. O aplicativo " +
+            "ainda não modifica o Among Us.",
             13f,
             Color.LTGRAY
         ))
 
         setContentView(scroll)
         refreshModules()
+    }
+
+    private fun openModulePicker() {
+        val intent = Intent(Intent.ACTION_OPEN_DOCUMENT).apply {
+            addCategory(Intent.CATEGORY_OPENABLE)
+            type = "*/*"
+        }
+
+        startActivityForResult(intent, PICK_MODULE_REQUEST)
+    }
+
+    @Deprecated("Usado para compatibilidade com o seletor nativo")
+    override fun onActivityResult(
+        requestCode: Int,
+        resultCode: Int,
+        data: Intent?
+    ) {
+        super.onActivityResult(requestCode, resultCode, data)
+
+        if (requestCode == PICK_MODULE_REQUEST &&
+            resultCode == RESULT_OK
+        ) {
+            data?.data?.let { uri ->
+                importModule(uri)
+            }
+        }
     }
 
     private fun refreshModules() {
@@ -174,10 +184,7 @@ class MainActivity : Activity() {
             return
         }
 
-        val tempFile = File(
-            cacheDir,
-            "armed7-import.kmod"
-        )
+        val tempFile = File(cacheDir, "armed7-import.kmod")
 
         try {
             val input = contentResolver.openInputStream(uri)
@@ -205,11 +212,7 @@ class MainActivity : Activity() {
         var name = "arquivo"
 
         val cursor: Cursor? = contentResolver.query(
-            uri,
-            null,
-            null,
-            null,
-            null
+            uri, null, null, null, null
         )
 
         cursor?.use {
@@ -235,6 +238,7 @@ class MainActivity : Activity() {
             text = label
             isAllCaps = false
             textSize = 16f
+
             setOnClickListener { action() }
 
             val params = matchWrap()
@@ -254,8 +258,12 @@ class MainActivity : Activity() {
             textSize = size
             setTextColor(color)
             gravity = Gravity.CENTER
+
             if (bold) {
-                setTypeface(null, android.graphics.Typeface.BOLD)
+                setTypeface(
+                    null,
+                    android.graphics.Typeface.BOLD
+                )
             }
         }
     }
