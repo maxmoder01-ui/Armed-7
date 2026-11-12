@@ -33,8 +33,8 @@ class ModuleCatalog(
         val game = detector.detect()
         val result = validator.validate(module, game)
 
-        if (!result.valid) {
-            return false
+        if (result.status != ModuleCompatibilityStatus.COMPATIBLE) {
+    return false
         }
 
         return stateManager.enable(id)
