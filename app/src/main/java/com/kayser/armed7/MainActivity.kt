@@ -1,3 +1,4 @@
+
 package com.kayser.armed7
 
 import android.app.Activity
@@ -21,12 +22,16 @@ class MainActivity : Activity() {
 
     private lateinit var manager: ModuleManager
     private lateinit var detector: GameDetector
+    private lateinit var stateManager: ModuleStateManager
+    private lateinit var catalog: ModuleCatalog
+
     private lateinit var statusText: TextView
     private lateinit var gameStatusText: TextView
     private lateinit var moduleList: LinearLayout
 
     companion object {
         private const val PICK_MODULE_REQUEST = 1001
+        private const val MAX_IMPORT_BYTES = 20L * 1024L * 1024L
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -37,6 +42,14 @@ class MainActivity : Activity() {
 
         manager = ModuleManager(this)
         detector = GameDetector(this)
+        stateManager = ModuleStateManager(this)
+
+        catalog = ModuleCatalog(
+            manager,
+            stateManager,
+            ModuleValidator(),
+            detector
+        )
 
         val root = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
@@ -52,7 +65,7 @@ class MainActivity : Activity() {
         root.addView(text("ARMED 7", 32f, Color.WHITE, true))
 
         root.addView(text(
-            "Central de módulos • Alpha 0.3",
+            "Central independente de módulos",
             15f,
             Color.LTGRAY
         ).apply {
@@ -62,70 +75,46 @@ class MainActivity : Activity() {
         statusText = text("", 17f, Color.WHITE, true).apply {
             setPadding(dp(10), dp(18), dp(10), dp(12))
         }
-
         root.addView(statusText)
 
-        root.addView(text(
-            "DETECÇÃO DO JOGO",
-            14f,
-            Color.rgb(150, 180, 220),
-            true
-        ).apply {
-            gravity = Gravity.START
-            setPadding(0, dp(18), 0, dp(8))
-        })
+        root.addView(sectionTitle("DETECÇÃO DO JOGO"))
 
         gameStatusText = text("", 14f, Color.LTGRAY).apply {
             setPadding(dp(12), dp(14), dp(12), dp(14))
             setBackgroundColor(Color.rgb(29, 38, 53))
         }
-
         root.addView(gameStatusText)
 
         root.addView(makeButton("Verificar Among Us") {
             refreshGameStatus()
+            refreshModules()
         })
 
-        root.addView(makeButton("Importar módulo") {
+        root.addView(makeButton("Importar módulo .kmod") {
             openModulePicker()
         })
 
-        root.addView(makeButton("Atualizar lista") {
+        root.addView(makeButton("Atualizar catálogo") {
             refreshModules()
-            toast("Lista atualizada.")
+            toast("Catálogo atualizado.")
         })
 
-        root.addView(text(
-            "MÓDULOS INSTALADOS",
-            14f,
-            Color.rgb(150, 180, 220),
-            true
-        ).apply {
-            gravity = Gravity.START
-            setPadding(0, dp(30), 0, dp(12))
-        })
+        root.addView(sectionTitle("MÓDULOS INSTALADOS"))
 
         moduleList = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
         }
-
         root.addView(moduleList)
 
-        root.addView(text(
-            "SOBRE O ARMED 7",
-            14f,
-            Color.rgb(150, 180, 220),
-            true
-        ).apply {
-            gravity = Gravity.START
-            setPadding(0, dp(30), 0, dp(10))
-        })
+        root.addView(sectionTitle("SOBRE O ARMED 7"))
 
         root.addView(text(
-            "O Armed 7 organiza módulos Android. " +
-            "Os pacotes são armazenados como dados. " +
-            "A detecção do jogo ainda não significa " +
-            "que os módulos possam ser executados nele.",
+            "O Armed 7 importa, organiza e valida pacotes " +
+            ".kmod com recursos declarativos. A ativação " +
+            "controla o estado dentro do próprio aplicativo. " +
+            "Ela não injeta código nem altera o processo " +
+            "do Among Us. Uma integração oficial ou " +
+            "compatível com o jogo ainda é necessária.",
             13f,
             Color.LTGRAY
         ))
@@ -136,17 +125,28 @@ class MainActivity : Activity() {
         refreshGameStatus()
     }
 
+    private fun sectionTitle(value: String): TextView =
+        text(
+            value,
+            14f,
+            Color.rgb(150, 180, 220),
+            true
+        ).apply {
+            gravity = Gravity.START
+            setPadding(0, dp(24), 0, dp(10))
+        }
+
     private fun refreshGameStatus() {
         val game = detector.detect()
 
         gameStatusText.text = if (game.isInstalled) {
-            "Among Us detectado!\n\n" +
+            "Among Us detectado\n\n" +
             "Pacote: ${game.packageName}\n" +
             "Versão: ${game.versionName ?: "Desconhecida"}\n" +
-            "Código: ${game.versionCode ?: "Desconhecido"}\n\n" +
-            "Arquitetura interna: ainda não verificada."
+            "Código: ${game.versionCode ?: "Desconhecido"}\n" +
+            "Arquitetura: não verificada"
         } else {
-            "Among Us não foi encontrado.\n\n" +
+            "Among Us não foi encontrado.\n" +
             "Verifique se o jogo está instalado."
         }
 
@@ -157,6 +157,155 @@ class MainActivity : Activity() {
                 Color.LTGRAY
             }
         )
+    }
+
+    private fun refreshModules() {
+        val entries = catalog.getModules()
+
+        val enabledCount = entries.count { it.enabled }
+
+        statusText.text =
+            "Armed 7 operacional\n" +
+            "Módulos: ${entries.size} • Ativados: $enabledCount"
+
+        moduleList.removeAllViews()
+
+        if (entries.isEmpty()) {
+            moduleList.addView(text(
+                "Nenhum módulo instalado.\n" +
+                "Importe um arquivo .kmod para começar.",
+                14f,
+                Color.LTGRAY
+            ))
+            return
+        }
+
+        entries.forEach { entry ->
+            val module = entry.module
+
+            val item = LinearLayout(this).apply {
+                orientation = LinearLayout.VERTICAL
+                setPadding(dp(14), dp(14), dp(14), dp(14))
+                setBackgroundColor(Color.rgb(29, 38, 53))
+            }
+
+            item.addView(text(
+                module.name,
+                18f,
+                Color.WHITE,
+                true
+            ))
+
+            val manifest = module.manifest
+
+            item.addView(text(
+                "ID: ${module.id}\n" +
+                "Versão: ${module.version}\n" +
+                "API: ${module.apiVersion}\n" +
+                "Autor: ${manifest?.author ?: "Desconhecido"}",
+                13f,
+                Color.LTGRAY
+            ))
+
+            if (!manifest?.description.isNullOrBlank()) {
+                item.addView(text(
+                    manifest?.description ?: "",
+                    13f,
+                    Color.LTGRAY
+                ).apply {
+                    setPadding(0, dp(8), 0, dp(8))
+                })
+            }
+
+            val compatibilityText = when {
+                entry.validation.errors.isNotEmpty() ->
+                    "Incompatível: ${entry.validation.errors.joinToString()}"
+
+                entry.validation.warnings.isNotEmpty() ->
+                    "Atenção: ${entry.validation.warnings.joinToString()}"
+
+                else ->
+                    "Requisitos conhecidos: aprovados"
+            }
+
+            item.addView(text(
+                compatibilityText,
+                12f,
+                if (entry.validation.errors.isNotEmpty()) {
+                    Color.rgb(255, 130, 130)
+                } else {
+                    Color.rgb(220, 190, 120)
+                }
+            ).apply {
+                setPadding(0, dp(8), 0, dp(8))
+            })
+
+            item.addView(makeButton(
+                if (entry.enabled) "Desativar módulo"
+                else "Ativar módulo"
+            ) {
+                toggleModule(module.id)
+            })
+
+            item.addView(makeButton("Desinstalar") {
+                confirmUninstall(module.id, module.name)
+            })
+
+            val params = matchWrap()
+            params.bottomMargin = dp(12)
+            moduleList.addView(item, params)
+        }
+    }
+
+    private fun toggleModule(id: String) {
+        try {
+            val enabled = catalog.isModuleEnabled(id)
+
+            val success = if (enabled) {
+                catalog.disableModule(id)
+            } else {
+                catalog.enableModule(id)
+            }
+
+            if (success) {
+                toast(
+                    if (enabled) "Módulo desativado."
+                    else "Módulo ativado no Armed 7."
+                )
+            } else {
+                toast("Não foi possível ativar o módulo.")
+            }
+
+            refreshModules()
+
+        } catch (exception: Exception) {
+            toast("Falha ao alterar o estado do módulo.")
+        }
+    }
+
+    private fun confirmUninstall(id: String, name: String) {
+        AlertDialog.Builder(this)
+            .setTitle("Desinstalar módulo")
+            .setMessage(
+                "Deseja remover \"$name\" do Armed 7?"
+            )
+            .setNegativeButton("Cancelar", null)
+            .setPositiveButton("Desinstalar") { _, _ ->
+                try {
+                    val removed = catalog.uninstallModule(id)
+
+                    toast(
+                        if (removed) "Módulo desinstalado."
+                        else "Módulo não encontrado."
+                    )
+
+                    refreshModules()
+
+                } catch (exception: Exception) {
+                    toast("Não foi possível desinstalar.")
+                }
+            }
+            .show()
     }
 
     private fun openModulePicker() {
@@ -179,87 +328,8 @@ class MainActivity : Activity() {
         if (requestCode == PICK_MODULE_REQUEST &&
             resultCode == RESULT_OK
         ) {
-            data?.data?.let { uri ->
-                importModule(uri)
-            }
+            data?.data?.let { importModule(it) }
         }
-    }
-
-    private fun refreshModules() {
-        val modules = manager.listModules()
-
-        statusText.text =
-            "Armed 7 está funcionando\n" +
-            "Módulos instalados: ${modules.size}"
-
-        moduleList.removeAllViews()
-
-        if (modules.isEmpty()) {
-            moduleList.addView(text(
-                "Nenhum módulo instalado.\n" +
-                "Importe um arquivo .kmod para começar.",
-                14f,
-                Color.LTGRAY
-            ))
-            return
-        }
-
-        modules.forEach { module ->
-            val item = LinearLayout(this).apply {
-                orientation = LinearLayout.VERTICAL
-                setPadding(dp(14), dp(12), dp(14), dp(12))
-                setBackgroundColor(Color.rgb(29, 38, 53))
-            }
-
-            item.addView(text(
-                module.name,
-                17f,
-                Color.WHITE,
-                true
-            ))
-
-            item.addView(text(
-                "ID: ${module.id}\n" +
-                "Versão: ${module.version}\n" +
-                "API: ${module.apiVersion}",
-                13f,
-                Color.LTGRAY
-            ))
-
-            item.addView(makeButton("Desinstalar") {
-                confirmUninstall(module.id, module.name)
-            })
-
-            val params = matchWrap()
-            params.bottomMargin = dp(12)
-            moduleList.addView(item, params)
-        }
-    }
-
-    private fun confirmUninstall(id: String, name: String) {
-        AlertDialog.Builder(this)
-            .setTitle("Desinstalar módulo")
-            .setMessage(
-                "Deseja realmente remover \"$name\" do Armed 7?"
-            )
-            .setNegativeButton("Cancelar", null)
-            .setPositiveButton("Desinstalar") { _, _ ->
-                try {
-                    val removed = manager.uninstallModule(id)
-
-                    if (removed) {
-                        toast("Módulo desinstalado.")
-                    } else {
-                        toast("O módulo não foi encontrado.")
-                    }
-
-                    refreshModules()
-
-                } catch (e: Exception) {
-                    toast("Não foi possível desinstalar o módulo.")
-                }
-            }
-            .show()
     }
 
     private fun importModule(uri: Uri) {
@@ -278,7 +348,21 @@ class MainActivity : Activity() {
 
             input.use { source ->
                 tempFile.outputStream().use { output ->
-                    source.copyTo(output)
+                    val buffer = ByteArray(8192)
+                    var total = 0L
+
+                    while (true) {
+                        val count = source.read(buffer)
+                        if (count == -1) break
+
+                        total += count
+
+                        require(total <= MAX_IMPORT_BYTES) {
+                            "Arquivo maior que 20 MB."
+                        }
+
+                        output.write(buffer, 0, count)
+                    }
                 }
             }
 
@@ -287,8 +371,11 @@ class MainActivity : Activity() {
             refreshModules()
             toast("Módulo ${result.name} instalado!")
 
-        } catch (e: Exception) {
-            toast("Falha ao importar módulo. Verifique o pacote.")
+        } catch (exception: Exception) {
+            toast(
+                exception.message
+                    ?: "Falha ao importar o módulo."
+            )
         } finally {
             tempFile.delete()
         }
@@ -323,12 +410,11 @@ class MainActivity : Activity() {
         return Button(this).apply {
             text = label
             isAllCaps = false
-            textSize = 16f
-
+            textSize = 15f
             setOnClickListener { action() }
 
             val params = matchWrap()
-            params.bottomMargin = dp(10)
+            params.bottomMargin = dp(8)
             layoutParams = params
         }
     }
