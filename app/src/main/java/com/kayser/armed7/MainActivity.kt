@@ -24,6 +24,7 @@ class MainActivity : Activity() {
     private lateinit var detector: GameDetector
     private lateinit var stateManager: ModuleStateManager
     private lateinit var catalog: ModuleCatalog
+    private lateinit var resourceBrowser: ModuleResourceBrowser
 
     private lateinit var statusText: TextView
     private lateinit var gameStatusText: TextView
@@ -49,6 +50,11 @@ class MainActivity : Activity() {
             stateManager,
             ModuleValidator(),
             detector
+        )
+
+        resourceBrowser = ModuleResourceBrowser(
+            this,
+            ModuleResourceReader(this)
         )
 
         val root = LinearLayout(this).apply {
@@ -125,8 +131,8 @@ class MainActivity : Activity() {
         refreshGameStatus()
     }
 
-    private fun sectionTitle(value: String): TextView =
-        text(
+    private fun sectionTitle(value: String): TextView {
+        return text(
             value,
             14f,
             Color.rgb(150, 180, 220),
@@ -135,6 +141,7 @@ class MainActivity : Activity() {
             gravity = Gravity.START
             setPadding(0, dp(24), 0, dp(10))
         }
+    }
 
     private fun refreshGameStatus() {
         val game = detector.detect()
@@ -144,7 +151,7 @@ class MainActivity : Activity() {
             "Pacote: ${game.packageName}\n" +
             "Versão: ${game.versionName ?: "Desconhecida"}\n" +
             "Código: ${game.versionCode ?: "Desconhecido"}\n" +
-            "Arquitetura: não verificada"
+            "Arquiteturas: ${game.gameAbis?.joinToString() ?: "Não verificadas"}"
         } else {
             "Among Us não foi encontrado.\n" +
             "Verifique se o jogo está instalado."
@@ -161,7 +168,6 @@ class MainActivity : Activity() {
 
     private fun refreshModules() {
         val entries = catalog.getModules()
-
         val enabledCount = entries.count { it.enabled }
 
         statusText.text =
@@ -222,20 +228,27 @@ class MainActivity : Activity() {
                     "Incompatível: ${entry.validation.errors.joinToString()}"
 
                 entry.validation.warnings.isNotEmpty() ->
-                    "Atenção: ${entry.validation.warnings.joinToString()}"
+                    "Não verificado: ${entry.validation.warnings.joinToString()}"
 
                 else ->
                     "Requisitos conhecidos: aprovados"
             }
 
+            val compatibilityColor = when {
+                entry.validation.errors.isNotEmpty() ->
+                    Color.rgb(255, 130, 130)
+
+                entry.validation.warnings.isNotEmpty() ->
+                    Color.rgb(220, 190, 120)
+
+                else ->
+                    Color.rgb(130, 220, 150)
+            }
+
             item.addView(text(
                 compatibilityText,
                 12f,
-                if (entry.validation.errors.isNotEmpty()) {
-                    Color.rgb(255, 130, 130)
-                } else {
-                    Color.rgb(220, 190, 120)
-                }
+                compatibilityColor
             ).apply {
                 setPadding(0, dp(8), 0, dp(8))
             })
@@ -245,6 +258,10 @@ class MainActivity : Activity() {
                 else "Ativar módulo"
             ) {
                 toggleModule(module.id)
+            })
+
+            item.addView(makeButton("Explorar recursos") {
+                resourceBrowser.show(module.id, module.name)
             })
 
             item.addView(makeButton("Desinstalar") {
@@ -286,9 +303,7 @@ class MainActivity : Activity() {
     private fun confirmUninstall(id: String, name: String) {
         AlertDialog.Builder(this)
             .setTitle("Desinstalar módulo")
-            .setMessage(
-                "Deseja remover \"$name\" do Armed 7?"
-            )
+            .setMessage("Deseja remover \"$name\" do Armed 7?")
             .setNegativeButton("Cancelar", null)
             .setPositiveButton("Desinstalar") { _, _ ->
                 try {
@@ -325,7 +340,8 @@ class MainActivity : Activity() {
     ) {
         super.onActivityResult(requestCode, resultCode, data)
 
-        if (requestCode == PICK_MODULE_REQUEST &&
+        if (
+            requestCode == PICK_MODULE_REQUEST &&
             resultCode == RESULT_OK
         ) {
             data?.data?.let { importModule(it) }
@@ -373,8 +389,7 @@ class MainActivity : Activity() {
 
         } catch (exception: Exception) {
             toast(
-                exception.message
-                    ?: "Falha ao importar o módulo."
+                exception.message ?: "Falha ao importar o módulo."
             )
         } finally {
             tempFile.delete()
@@ -385,7 +400,11 @@ class MainActivity : Activity() {
         var name = "arquivo"
 
         val cursor: Cursor? = contentResolver.query(
-            uri, null, null, null, null
+            uri,
+            null,
+            null,
+            null,
+            null
         )
 
         cursor?.use {
@@ -448,11 +467,14 @@ class MainActivity : Activity() {
         ).show()
     }
 
-    private fun dp(value: Int): Int =
-        (value * resources.displayMetrics.density).toInt()
+    private fun dp(value: Int): Int {
+        return (value * resources.displayMetrics.density).toInt()
+    }
 
-    private fun matchWrap() = LinearLayout.LayoutParams(
-        ViewGroup.LayoutParams.MATCH_PARENT,
-        ViewGroup.LayoutParams.WRAP_CONTENT
-    )
+    private fun matchWrap(): LinearLayout.LayoutParams {
+        return LinearLayout.LayoutParams(
+            ViewGroup.LayoutParams.MATCH_PARENT,
+            ViewGroup.LayoutParams.WRAP_CONTENT
+        )
+    }
 }
