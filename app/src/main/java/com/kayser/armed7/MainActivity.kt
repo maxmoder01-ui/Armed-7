@@ -2,6 +2,7 @@
 package com.kayser.armed7
 
 import android.app.Activity
+import android.app.AlertDialog
 import android.os.Bundle
 import android.content.Intent
 import android.net.Uri
@@ -49,7 +50,7 @@ class MainActivity : Activity() {
         root.addView(text("ARMED 7", 32f, Color.WHITE, true))
 
         root.addView(text(
-            "Central de módulos • Alpha 0.2",
+            "Central de módulos • Alpha 0.3",
             15f,
             Color.LTGRAY
         ).apply {
@@ -98,9 +99,9 @@ class MainActivity : Activity() {
         })
 
         root.addView(text(
-            "O Armed 7 organiza módulos Android. Nesta versão, " +
-            "os pacotes são armazenados como dados. O aplicativo " +
-            "ainda não modifica o Among Us.",
+            "O Armed 7 organiza módulos Android. " +
+            "Os pacotes são armazenados como dados. " +
+            "O aplicativo ainda não modifica o Among Us.",
             13f,
             Color.LTGRAY
         ))
@@ -139,13 +140,15 @@ class MainActivity : Activity() {
         val modules = manager.listModules()
 
         statusText.text =
-            "Armed 7 está funcionando\nMódulos instalados: ${modules.size}"
+            "Armed 7 está funcionando\n" +
+            "Módulos instalados: ${modules.size}"
 
         moduleList.removeAllViews()
 
         if (modules.isEmpty()) {
             moduleList.addView(text(
-                "Nenhum módulo instalado.\nImporte um arquivo .kmod para começar.",
+                "Nenhum módulo instalado.\n" +
+                "Importe um arquivo .kmod para começar.",
                 14f,
                 Color.LTGRAY
             ))
@@ -167,13 +170,47 @@ class MainActivity : Activity() {
             ))
 
             item.addView(text(
-                "ID: ${module.id}\nVersão: ${module.version}",
+                "ID: ${module.id}\n" +
+                "Versão: ${module.version}\n" +
+                "API: ${module.apiVersion}",
                 13f,
                 Color.LTGRAY
             ))
 
-            moduleList.addView(item, matchWrap())
+            item.addView(makeButton("Desinstalar") {
+                confirmUninstall(module.id, module.name)
+            })
+
+            val params = matchWrap()
+            params.bottomMargin = dp(12)
+            moduleList.addView(item, params)
         }
+    }
+
+    private fun confirmUninstall(id: String, name: String) {
+        AlertDialog.Builder(this)
+            .setTitle("Desinstalar módulo")
+            .setMessage(
+                "Deseja realmente remover \"$name\" do Armed 7?"
+            )
+            .setNegativeButton("Cancelar", null)
+            .setPositiveButton("Desinstalar") { _, _ ->
+                try {
+                    val removed = manager.uninstallModule(id)
+
+                    if (removed) {
+                        toast("Módulo desinstalado.")
+                    } else {
+                        toast("O módulo não foi encontrado.")
+                    }
+
+                    refreshModules()
+
+                } catch (e: Exception) {
+                    toast("Não foi possível desinstalar o módulo.")
+                }
+            }
+            .show()
     }
 
     private fun importModule(uri: Uri) {
