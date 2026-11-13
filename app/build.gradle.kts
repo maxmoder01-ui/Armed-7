@@ -1,3 +1,4 @@
+
 plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
@@ -11,8 +12,8 @@ android {
         applicationId = "com.kayser.armed7"
         minSdk = 23
         targetSdk = 35
-        versionCode = 1
-        versionName = "0.1.0-alpha"
+        versionCode = 100
+        versionName = "1.0.0"
 
         ndk {
             abiFilters += listOf("armeabi-v7a")
