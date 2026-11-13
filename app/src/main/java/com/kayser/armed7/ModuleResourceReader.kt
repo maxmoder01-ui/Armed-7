@@ -15,12 +15,16 @@ class ModuleResourceReader(context: Context) {
         val size: Long
     )
 
-    fun listResources(moduleId: String): List<ResourceInfo> {
+    fun readManifest(moduleId: String): KmodManifest {
         val moduleDir = getModuleDirectory(moduleId)
         val manifestFile = File(moduleDir, "manifest.json")
 
         require(manifestFile.isFile) {
             "Manifesto não encontrado."
+        }
+
+        require(manifestFile.length() <= MAX_MANIFEST_BYTES) {
+            "Manifesto excede 64 KB."
         }
 
         val manifest = KmodManifestParser.parse(
@@ -30,6 +34,14 @@ class ModuleResourceReader(context: Context) {
         require(manifest.id == moduleId) {
             "Identidade do módulo inválida."
         }
+
+        return manifest
+    }
+
+    fun listResources(moduleId: String): List<ResourceInfo> {
+        val moduleDir = getModuleDirectory(moduleId)
+
+        readManifest(moduleId)
 
         val result = mutableListOf<ResourceInfo>()
 
@@ -218,6 +230,7 @@ class ModuleResourceReader(context: Context) {
 
     companion object {
         private const val MAX_RESOURCES = 500
+        private const val MAX_MANIFEST_BYTES = 65536L
         private const val MAX_TEXT_BYTES = 1024L * 1024L
         private const val MAX_IMAGE_BYTES = 5L * 1024L * 1024L
 
