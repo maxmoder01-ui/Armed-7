@@ -1,3 +1,4 @@
+
 package com.kayser.armed7
 
 import org.json.JSONObject
@@ -12,7 +13,8 @@ data class KmodManifest(
     val targetPackage: String,
     val minGameVersion: String?,
     val maxGameVersion: String?,
-    val supportedAbis: List<String>
+    val supportedAbis: List<String>,
+    val entry: String? = null
 )
 
 object KmodManifestParser {
@@ -57,6 +59,14 @@ object KmodManifestParser {
         val maxVersion = json
             .optString("maxGameVersion")
             .takeIf { it.isNotBlank() }
+
+        val entry = json
+            .optString("entry")
+            .takeIf { it.isNotBlank() }
+
+        if (entry != null) {
+            validateEntryPath(entry)
+        }
 
         val abis = mutableListOf<String>()
         val abiArray = json.optJSONArray("supportedAbis")
@@ -127,7 +137,46 @@ object KmodManifestParser {
             targetPackage = targetPackage,
             minGameVersion = minVersion,
             maxGameVersion = maxVersion,
-            supportedAbis = abis
+            supportedAbis = abis,
+            entry = entry
         )
+    }
+
+    private fun validateEntryPath(path: String) {
+        require(path.length <= 240) {
+            "Caminho de entrada muito longo."
+        }
+
+        require(
+            !path.startsWith("/") &&
+            !path.contains("\\") &&
+            !path.contains('\u0000') &&
+            !path.contains(":")
+        ) {
+            "Caminho de entrada inválido."
+        }
+
+        val parts = path.split("/")
+
+        require(parts.size >= 2) {
+            "Caminho de entrada incompleto."
+        }
+
+        require(
+            parts.first() == "assets" ||
+            parts.first() == "resources"
+        ) {
+            "A entrada deve ficar em assets/ ou resources/."
+        }
+
+        require(parts.none {
+            it.isBlank() || it == "." || it == ".."
+        }) {
+            "Caminho de entrada inseguro."
+        }
+
+        require(path.endsWith(".json", ignoreCase = true)) {
+            "A entrada do módulo precisa ser um arquivo JSON."
+        }
     }
 }
