@@ -27,9 +27,24 @@ class ModuleManager(context: Context) {
                 !it.name.endsWith(".tmp") &&
                 !it.name.endsWith(".backup")
             }
-            ?.mapNotNull {
+            ?.mapNotNull { directory ->
                 runCatching {
-                    readManifest(File(it, "manifest.json"))
+                    require(
+                        directory.canonicalFile.parentFile ==
+                            modulesDir.canonicalFile
+                    ) {
+                        "Caminho de módulo inseguro."
+                    }
+
+                    val module = readManifest(
+                        File(directory, "manifest.json")
+                    )
+
+                    require(module.id == directory.name) {
+                        "ID do módulo não corresponde à pasta."
+                    }
+
+                    module
                 }.getOrNull()
             }
             ?.sortedBy { it.name.lowercase() }
